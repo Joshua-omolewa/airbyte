@@ -85,7 +85,7 @@ The legacy `tickets` and `e-commerce` scopes are deprecated and might not be ava
 | `email_subscriptions`       | `content`                                                                                                    |
 | `engagements`               | `crm.objects.companies.read`, `crm.objects.contacts.read`, `crm.objects.deals.read`, `tickets`, `e-commerce` |
 | `engagements_emails`        | `sales-email-read`                                                                                           |
-| `engagements_task_pipelines` | `crm.objects.contacts.read`                                                                                  |
+| `engagements_task_pipelines` | `crm.objects.contacts.read`                                                                                 |
 | `forms`                     | `forms`                                                                                                      |
 | `form_submissions`          | `forms`                                                                                                      |
 | `goals`                     | `crm.objects.goals.read`                                                                                     |
@@ -382,6 +382,15 @@ To mitigate this, configure the **Property History Lookback Window** in the sour
 - **EngagementsAll** if either of these criteria are not met.
 
 Because of this, the `engagements` stream can be slow to sync if it hasn't synced within the last 30 days and/or is generating large volumes of new data. To accommodate for this limitation, we recommend scheduling more frequent syncs.
+
+### Notes on the `engagements_task_pipelines` stream
+
+The `engagements_task_pipelines` stream reads HubSpot's `GET /crm/v3/pipelines/tasks` endpoint and emits one record per task pipeline, with that pipeline's stages nested in the `stages` array. Tasks in `engagements_tasks` only store a stage ID in the `hs_pipeline_stage` property, so use this stream to look up each task's stage label and whether the stage counts as open or closed:
+
+- Join `stages[].id` to `properties_hs_pipeline_stage` (or `properties.hs_pipeline_stage`) on `engagements_tasks`. Both are strings. HubSpot's default task stages have UUID IDs, but stages you add later in HubSpot get numeric IDs such as `5996831934`, so don't cast the join key to an integer.
+- Each stage's `metadata` object stores its state as strings, not booleans or enums: `isClosed` is `"true"` or `"false"`, and `state` is `"OPEN"` or `"CLOSED"`. Task stages don't use the `ticketState` key that ticket stages use.
+
+The connector requests all task pipelines in a single call on every sync. In incremental mode, it then emits only the pipelines whose `updatedAt` is newer than the saved cursor, and uses `createdAt` for any pipeline that HubSpot returns without an `updatedAt`.
 
 ### Notes on the `Forms` and `Form Submissions` stream
 
